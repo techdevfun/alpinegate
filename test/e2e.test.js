@@ -103,12 +103,15 @@ test("e2e: local Docker image via a fake daemon socket", async () => {
   const tarball = readFileSync(EXPOSED_TAR);
   const server = createServer((socket) => {
     let buf = Buffer.alloc(0);
-    socket.on("data", (chunk) => {
+    let responded = false; // one response per connection: a request can
+    socket.on("data", (chunk) => { // arrive in several chunks, and the
+      if (responded) return; // client may write again after we answered
       buf = Buffer.concat([buf, chunk]);
       const head = buf.toString("utf8");
       const end = head.indexOf("\r\n\r\n");
       if (end === -1) return;
       const firstLine = head.split("\r\n")[0];
+      responded = true;
       if (firstLine.includes("/json")) {
         const body = JSON.stringify({ Id: "sha256:fake", RepoTags: ["alpine:3.18"] });
         socket.end(
