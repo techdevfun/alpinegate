@@ -100,7 +100,7 @@ Checked 2026-11-06 against the Alpine advisory (https://alpinelinux.org/posts/20
 | 3.17 | 9.1_p1-r7 |
 | 3.16 | 9.0_p1-r6 |
 
-CVE-2026-123158, CVSS 3.1 score 8.1 (High). Researcher: Özgün Kültekin (Wakefield); write-up at sshhole.com. No confirmed exploitation in the wild reported as of 2026-11-06 (per the Alpine advisory and OpenSSH notes at disclosure; public reproduction labs exist, so treat exposure as urgent anyway).
+CVE-2026-123158, CVSS 3.1 score 8.1 (High). Researcher: Özgün Kültekin (Wakefield); write-up at sshhole.com. No confirmed exploitation in the wild was reported at disclosure (per the Alpine advisory and OpenSSH notes); watchTowr reported active exploitation attempts on 2026-11-06, driven by automated botnets and cryptominers — treat exposure as urgent.
 
 ## The first-hour playbook
 
@@ -113,7 +113,7 @@ CVE-2026-123158, CVSS 3.1 score 8.1 (High). Researcher: Özgün Kültekin (Wakef
 ## Where rivals beat us
 
 - **Trivy and Grype cover thousands of CVEs** across every package in an image; alpinegate covers exactly one exposure shape. Trivy also scans IaC, Kubernetes, secrets, and licenses; alpinegate does none of that. If you want a full CVE list, use Trivy or Grype.
-- **Trivy and Grype are database-driven**, so a same-day CVE may not be in their database yet. On the day this CVE landed, a condition checker was not blind in the same way — that is the whole wedge: alpinegate checks the five live conditions from the image itself, with zero network and no database wait, and adds a running-container inventory plus a first-hour playbook that a CVE list does not give you.
+- **Trivy and Grype are database-driven**, so a same-day CVE may not be in their database yet. On the day this CVE landed, a condition checker was not blind in the same way — that is the whole wedge: alpinegate checks the five live conditions from the image itself, with zero network and no database wait, and adds an image inventory plus a first-hour playbook that a CVE list does not give you.
 - **ssh-audit** audits SSH configuration and policy, but does not detect Alpine/musl, does not check `/etc/shadow`, and does not inventory a fleet.
 - **Lynis / OpenSCAP** do broad host hardening audits, but no sshole-specific condition check and no container inventory.
 
