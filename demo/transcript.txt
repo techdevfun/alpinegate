@@ -1,0 +1,48 @@
+$ alpinegate scan fixtures/exposed fixtures/patched
+TARGET            ALPINE  OPENSSH    PAM  PASSAUTH  `*` ACCOUNTS  DONOR  VERDICT
+----------------  ------  ---------  ---  --------  ------------  -----  -------
+fixtures/exposed  3.18.9  9.3_p2-r3  no   yes       root          $6$    EXPOSED
+fixtures/patched  3.18.9  9.3_p2-r4  no   yes       root          $6$    SAFE   
+
+fixtures/exposed: all five conditions hold: Alpine 3.18, openssh 9.3_p2-r3 < fixed 9.3_p2-r4, no PAM, password auth on, * accounts (root) + $6$ salt donor
+fixtures/patched: openssh 9.3_p2-r4 is at or above the fixed version 9.3_p2-r4 for Alpine 3.18
+exit: 1
+
+$ alpinegate playbook fixtures/exposed
+alpinegate playbook — fixtures/exposed
+verdict: EXPOSED
+
+CVE-2026-123158 — an attacker who can reach your SSH port can
+log in without knowing any password (257–1024 byte password,
+musl crypt() returns "*", matching the stored "*" field).
+
+Do this in the first hour, in order:
+
+1. Close the hole NOW (no package needed):
+   mkdir -p /etc/ssh/sshd_config.d
+   echo 'PasswordAuthentication no' > /etc/ssh/sshd_config.d/00-no-passwords.conf
+   # Alpine's default sshd_config reads that directory from 3.19 on;
+   # on older releases also edit /etc/ssh/sshd_config directly.
+   sshd -t && rc-service sshd restart
+   sshd -T | grep -i passwordauthentication   # must print: no
+
+   Make sure key login works FIRST, and keep your current
+   session open until a new login is tested.
+
+2. Then upgrade and restart (the upgrade alone does NOT
+   replace the running daemon):
+   apk upgrade -U -a
+   rc-service sshd restart
+   # fixed openssh for Alpine 3.18: 9.3_p2-r4
+
+3. Check whether you were already attacked:
+   grep 'Accepted password for' /var/log/messages
+   Any accepted password login for an account with no
+   password (root, alpine, any key-only user) means the
+   machine was compromised — treat it as such, rotate keys,
+   review doas use and recently created users and files.
+
+Why this works: with password logins off, the bypass has
+nothing to compare against; with the fixed package, sshd
+refuses stored fields shorter than four characters.
+exit: 0

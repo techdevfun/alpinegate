@@ -1,0 +1,7 @@
+TARGET            ALPINE  OPENSSH    PAM  PASSAUTH  `*` ACCOUNTS  DONOR  VERDICT
+----------------  ------  ---------  ---  --------  ------------  -----  -------
+fixtures/exposed  3.18.9  9.3_p2-r3  no   yes       root          $6$    EXPOSED
+fixtures/patched  3.18.9  9.3_p2-r4  no   yes       root          $6$    SAFE   
+
+fixtures/exposed: all five conditions hold: Alpine 3.18, openssh 9.3_p2-r3 < fixed 9.3_p2-r4, no PAM, password auth on, * accounts (root) + $6$ salt donor
+fixtures/patched: openssh 9.3_p2-r4 is at or above the fixed version 9.3_p2-r4 for Alpine 3.18

@@ -1,0 +1,31 @@
+# Gate a build on sshole exposure (CVE-2026-123158)
+#
+# Copy into .github/workflows/alpinegate.yml. It checks out this repo,
+# builds the CLI, and fails the job when any image in the matrix is
+# EXPOSED. Images are exported with `docker save` and scanned as
+# tarballs, so the check needs no daemon socket and no network.
+name: alpinegate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  exposure-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # Build the image under test, export it, scan it. Exit 1 on EXPOSED.
+      - name: Build image under test
+        run: docker build -t myapp:${{ github.sha }} .
+      - name: Export image
+        run: docker save myapp:${{ github.sha }} -o myapp.tar
+      - name: Scan for sshole exposure
+        run: node dist/cli.js scan myapp.tar --fail-on exposed

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+# Extracted fixture trees are derived from the committed tarballs
+# (scripts/extract-fixtures.js) and are never published.
+fixtures/exposed/
+fixtures/patched/
+fixtures/.cache/

@@ -1,0 +1,57 @@
+{
+  "tool": "alpinegate",
+  "version": "0.1.0",
+  "cve": "CVE-2026-123158",
+  "cvss": "8.1 (CVSS 3.1, High)",
+  "fixed_versions_checked": "2026-11-06",
+  "results": [
+    {
+      "target": "fixtures/exposed",
+      "alpine_release": "3.18.9",
+      "branch": "3.18",
+      "openssh_version": "9.3_p2-r3",
+      "openssh_server_version": "9.3_p2-r3",
+      "fixed_version": "9.3_p2-r4",
+      "pam_in_use": false,
+      "password_authentication": true,
+      "star_accounts": [
+        "root"
+      ],
+      "salt_donor": true,
+      "salt_donor_hash_type": "$6$",
+      "sshd_installed": true,
+      "sshd_running": null,
+      "verdict": "EXPOSED",
+      "reasons": [
+        "all five conditions hold: Alpine 3.18, openssh 9.3_p2-r3 < fixed 9.3_p2-r4, no PAM, password auth on, * accounts (root) + $6$ salt donor"
+      ],
+      "conditions": [
+        {
+          "id": "alpine-musl",
+          "met": true,
+          "detail": "3.18.9"
+        },
+        {
+          "id": "vulnerable-openssh",
+          "met": true,
+          "detail": "9.3_p2-r3 (fixed for 3.18: 9.3_p2-r4)"
+        },
+        {
+          "id": "no-pam",
+          "met": true,
+          "detail": "openssh-server built without PAM"
+        },
+        {
+          "id": "password-auth",
+          "met": true,
+          "detail": "yes (or OpenSSH default)"
+        },
+        {
+          "id": "star-plus-donor",
+          "met": true,
+          "detail": "* accounts: root; donor hash type $6$"
+        }
+      ]
+    }
+  ]
+}
