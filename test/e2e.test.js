@@ -103,28 +103,32 @@ test("e2e: local Docker image via a fake daemon socket", async () => {
   const tarball = readFileSync(EXPOSED_TAR);
   const server = createServer((socket) => {
     let buf = Buffer.alloc(0);
-    let responded = false; // one response per connection: a request can
-    socket.on("data", (chunk) => { // arrive in several chunks, and the
-      if (responded) return; // client may write again after we answered
+    // Keep the connection open between requests: Node's http agent
+    // reuses it (keep-alive) for the second call, so answering the
+    // first request with socket.end() makes the second fail with
+    // "socket hang up" (seen on Node 20.x). Only end after /get.
+    socket.on("data", (chunk) => {
       buf = Buffer.concat([buf, chunk]);
-      const head = buf.toString("utf8");
-      const end = head.indexOf("\r\n\r\n");
-      if (end === -1) return;
-      const firstLine = head.split("\r\n")[0];
-      responded = true;
-      if (firstLine.includes("/json")) {
-        const body = JSON.stringify({ Id: "sha256:fake", RepoTags: ["alpine:3.18"] });
-        socket.end(
-          `HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${body.length}\r\n\r\n${body}`,
-        );
-      } else if (firstLine.includes("/get")) {
-        socket.write(
-          `HTTP/1.1 200 OK\r\nContent-Type: application/x-tar\r\nContent-Length: ${tarball.length}\r\n\r\n`,
-        );
-        socket.write(tarball);
-        socket.end();
-      } else {
-        socket.end("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n");
+      for (;;) {
+        const head = buf.toString("utf8");
+        const end = head.indexOf("\r\n\r\n");
+        if (end === -1) return;
+        const firstLine = head.split("\r\n")[0];
+        buf = buf.subarray(end + 4); // consume this request (GET: no body)
+        if (firstLine.includes("/json")) {
+          const body = JSON.stringify({ Id: "sha256:fake", RepoTags: ["alpine:3.18"] });
+          socket.write(
+            `HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${body.length}\r\n\r\n${body}`,
+          );
+        } else if (firstLine.includes("/get")) {
+          socket.write(
+            `HTTP/1.1 200 OK\r\nContent-Type: application/x-tar\r\nContent-Length: ${tarball.length}\r\n\r\n`,
+          );
+          socket.write(tarball);
+          socket.end();
+        } else {
+          socket.write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n");
+        }
       }
     });
   });
