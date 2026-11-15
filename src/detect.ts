@@ -89,6 +89,89 @@ interface SshdConfig {
 }
 
 /**
+ * Split one sshd_config line the way sshd itself does:
+ * the keyword ends at the first whitespace or a single '='
+ * (strdelim, misc.c), and the arguments are split on whitespace
+ * with '...' / "..." quotes removed and backslash escapes honoured
+ * (argv_split, misc.c). A '#' ends the line, but only at a token
+ * boundary — '#' inside a quoted value is literal. Returns
+ * [keyword, ...args]; [] for a blank or comment-only line.
+ */
+function splitConfigLine(line: string): string[] {
+  const tokens: string[] = [];
+  const n = line.length;
+  let i = 0;
+  const skipWs = (): void => {
+    while (i < n && (line[i] === " " || line[i] === "\t")) i++;
+  };
+  skipWs();
+  if (i >= n || line[i] === "#") return tokens;
+  // Keyword: up to the first whitespace or '='.
+  const start = i;
+  while (i < n && line[i] !== " " && line[i] !== "\t" && line[i] !== "=") i++;
+  let keyword = line.slice(start, i);
+  // A quoted keyword is unquoted by strdelim.
+  if (
+    keyword.length >= 2 &&
+    ((keyword.startsWith('"') && keyword.endsWith('"')) ||
+      (keyword.startsWith("'") && keyword.endsWith("'")))
+  ) {
+    keyword = keyword.slice(1, -1);
+  }
+  if (keyword === "") return tokens;
+  tokens.push(keyword);
+  // Skip whitespace, then exactly one '=' and its surrounding
+  // whitespace (strdelim skips a single '=').
+  skipWs();
+  if (line[i] === "=") {
+    i++;
+    skipWs();
+  }
+  // Arguments (argv_split).
+  while (i < n) {
+    skipWs();
+    if (i >= n || line[i] === "#") break;
+    let arg = "";
+    let quote: string | null = null;
+    let started = false;
+    while (i < n) {
+      const ch = line[i];
+      if (quote !== null) {
+        if (
+          ch === "\\" &&
+          i + 1 < n &&
+          (line[i + 1] === quote || line[i + 1] === "\\")
+        ) {
+          arg += line[i + 1];
+          i += 2;
+          continue;
+        }
+        if (ch === quote) {
+          quote = null;
+          i++;
+          continue;
+        }
+        arg += ch;
+        i++;
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        quote = ch;
+        started = true;
+        i++;
+        continue;
+      }
+      if (ch === " " || ch === "\t") break;
+      arg += ch;
+      started = true;
+      i++;
+    }
+    if (started) tokens.push(arg);
+  }
+  return tokens;
+}
+
+/**
  * Parse sshd_config the way sshd itself resolves it: the FIRST
  * occurrence of a keyword wins, Include lines expand in place
  * (sorted), and only the global context is read — directives inside
@@ -96,6 +179,11 @@ interface SshdConfig {
  * for v0.1.0 (see README, "Honest limits"). Absent keywords fall
  * back to the OpenSSH defaults: PasswordAuthentication yes,
  * UsePAM no.
+ *
+ * Line syntax follows sshd (openssh-portable master, servconf.c /
+ * misc.c): a keyword may be separated from its value by whitespace
+ * or a single '=' (strdelim), values may be quoted (argv_split),
+ * and a relative Include path resolves under /etc/ssh (SSHDIR).
  */
 export function parseSshdConfig(rootfs: Rootfs): SshdConfig {
   const found = new Map<string, string>();
@@ -107,9 +195,9 @@ export function parseSshdConfig(rootfs: Rootfs): SshdConfig {
     const text = rootfs.readText(path);
     if (text === null) return;
     for (const raw of text.split("\n")) {
-      const line = raw.replace(/#.*$/, "").trim();
-      if (line === "") continue;
-      const [keyword, ...rest] = line.split(/\s+/);
+      const tokens = splitConfigLine(raw);
+      if (tokens.length === 0) continue;
+      const [keyword, ...rest] = tokens;
       const lower = keyword.toLowerCase();
       if (lower === "match") break; // Match block: stop, global only
       if (lower === "include") {
@@ -137,15 +225,20 @@ function expandInclude(
   pattern: string,
   readInto: (path: string) => void,
 ): void {
-  // Only the drop-in directory form is expanded; anything else is a
-  // literal path. Patterns never leave the rootfs.
-  if (!pattern.includes("*")) {
-    readInto(pattern);
+  // sshd resolves a relative Include under /etc/ssh (SSHDIR,
+  // servconf.c); absolute paths and '~' paths are used as-is.
+  // Patterns never leave the rootfs.
+  const resolved =
+    pattern.startsWith("/") || pattern.startsWith("~")
+      ? pattern
+      : `/etc/ssh/${pattern}`;
+  if (!resolved.includes("*")) {
+    readInto(resolved);
     return;
   }
-  const dir = pattern.slice(0, pattern.lastIndexOf("/"));
+  const dir = resolved.slice(0, resolved.lastIndexOf("/"));
   const names = rootfs.listDir(dir) ?? [];
-  const suffix = pattern.slice(pattern.lastIndexOf("/") + 1);
+  const suffix = resolved.slice(resolved.lastIndexOf("/") + 1);
   const re = new RegExp(
     "^" + suffix.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$",
   );
