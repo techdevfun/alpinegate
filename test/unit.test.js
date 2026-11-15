@@ -162,6 +162,100 @@ test("sshd_config: Match blocks are out of scope (global only)", () => {
   assert.equal(cfg.passwordAuth, true);
 });
 
+// sshd tokenizes lines with strdelim (keyword ends at whitespace or
+// a single '=') and argv_split (quotes removed, '#' ends the line at
+// a token boundary); relative Includes resolve under /etc/ssh
+// (SSHDIR). A directive written in any of those forms that really
+// turns password auth off must be honoured, not silently dropped.
+test("sshd_config: Keyword=value form is honoured", () => {
+  const cfg = parseSshdConfig(
+    new MemoryRootfs(
+      exposedFiles({ "/etc/ssh/sshd_config": "PasswordAuthentication=no\n" }),
+      "t",
+    ),
+  );
+  assert.equal(cfg.passwordAuth, false);
+});
+
+test("sshd_config: Keyword = value with spaces is honoured", () => {
+  const cfg = parseSshdConfig(
+    new MemoryRootfs(
+      exposedFiles({ "/etc/ssh/sshd_config": "PasswordAuthentication = no\n" }),
+      "t",
+    ),
+  );
+  assert.equal(cfg.passwordAuth, false);
+});
+
+test("sshd_config: quoted value is honoured", () => {
+  for (const q of ['"', "'"]) {
+    const cfg = parseSshdConfig(
+      new MemoryRootfs(
+        exposedFiles({
+          "/etc/ssh/sshd_config": `PasswordAuthentication ${q}no${q}\n`,
+        }),
+        "t",
+      ),
+    );
+    assert.equal(cfg.passwordAuth, false, `quote ${q}`);
+  }
+});
+
+test("sshd_config: UsePAM=yes enables PAM", () => {
+  const d = analyze(
+    new MemoryRootfs(
+      exposedFiles({
+        "/lib/apk/db/installed":
+          "P:openssh\nV:9.3_p2-r3\nP:openssh-server-pam\nV:9.3_p2-r3\n",
+        "/etc/ssh/sshd_config": "UsePAM=yes\n",
+      }),
+      "t",
+    ),
+  );
+  assert.equal(d.pamInUse, true);
+  assert.equal(d.verdict, "SAFE");
+});
+
+test("sshd_config: relative Include resolves under /etc/ssh (glob)", () => {
+  const cfg = parseSshdConfig(
+    new MemoryRootfs(
+      exposedFiles({
+        "/etc/ssh/sshd_config":
+          "Include sshd_config.d/*.conf\nPasswordAuthentication yes\n",
+        "/etc/ssh/sshd_config.d/00-no-passwords.conf":
+          "PasswordAuthentication no\n",
+      }),
+      "t",
+    ),
+  );
+  assert.equal(cfg.passwordAuth, false);
+});
+
+test("sshd_config: relative Include resolves under /etc/ssh (single file)", () => {
+  const cfg = parseSshdConfig(
+    new MemoryRootfs(
+      exposedFiles({
+        "/etc/ssh/sshd_config":
+          "Include sshd_config.d/00-no-passwords.conf\nPasswordAuthentication yes\n",
+        "/etc/ssh/sshd_config.d/00-no-passwords.conf":
+          "PasswordAuthentication no\n",
+      }),
+      "t",
+    ),
+  );
+  assert.equal(cfg.passwordAuth, false);
+});
+
+test("sshd_config: = form verdict is AT-RISK, not EXPOSED", () => {
+  const d = analyze(
+    new MemoryRootfs(
+      exposedFiles({ "/etc/ssh/sshd_config": "PasswordAuthentication=no\n" }),
+      "t",
+    ),
+  );
+  assert.equal(d.verdict, "AT-RISK");
+});
+
 // --- Verdicts: each of the five conditions toggled once --------------------
 test("all five conditions -> EXPOSED", () => {
   const d = exposed();
